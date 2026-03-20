@@ -1,0 +1,11 @@
+`<use name="FWCore/Framework"/>
+<use name="FWCore/ParameterSet"/>
+<use name="FWCore/MessageLogger"/>
+<use name="DataFormats/Common"/>
+<use name="DataFormats/DetId"/>
+<use name="SimDataFormats/TrackingHit"/>
+<use name="Geometry/Records"/>
+<use name="Geometry/MTDGeometryBuilder"/>
+<library name="FastSimulationMTDPlugins" file="*.cc">
+  <flags EDM_PLUGIN="1"/>
+</library>
