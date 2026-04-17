@@ -19,6 +19,10 @@ def customiseMTD(process):
     # Load this module
     process.load("FastSimulation.MTD.mtdSimHitProducer_cfi")
 
+    # Add analyzer
+    from FastSimulation.MTD.mtdSimHitAnalyzer_cfi import mtdSimHitAnalyzer
+    process.mtdSimHitAnalyzer = mtdSimHitAnalyzer
+
     if hasattr(process, 'simulation_step'):
         process.simulation_step += process.mtdSimHitProducer
 

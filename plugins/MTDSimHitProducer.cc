@@ -4,7 +4,7 @@
 ///
 ///   MTD fastsim try...
 ///
-/// - Hoyong Jeong (Korea university)
+/// - Hoyong Jeong (hoyong5419@korea.ac.kr, Korea University)
 ///
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -13,7 +13,6 @@
 ///-----------------------------------------------------------------------------
 /// Headers
 ///-----------------------------------------------------------------------------
-//#include "FastSimulation/MTD/plugins/MTDSimHitProducer.h"
 #include "MTDSimHitProducer.h"
 
 #include "FWCore/Framework/interface/MakerMacros.h"
@@ -133,9 +132,9 @@ void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::Ev
 
 		//--------------------------------------
 		// Time of Flight accounted from creation time (ns)
-        // speed of light = 29.9792 cm/ns
+        // speed of light = 29.9792458 cm/ns
 		//--------------------------------------
-        const float c_cm_ns = 29.9792f;
+		const float c_cm_ns = 29.9792458;
 
 		//--------------------------------------
 		// Looping over MTD modules -> propagate toward each module surface
@@ -155,10 +154,10 @@ void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::Ev
 			if ( ! surface . bounds() . inside(localPos) ) continue;
 
 			// Calculate ToF: from creation to hit / c + creation time
-			GlobalPoint  hitGlobal = det -> surface() . toGlobal(localPos);
-			GlobalPoint  vtxGlobal(vertex . position() . x(),
-			                       vertex . position() . y(),
-			                       vertex . position() . z());
+			GlobalPoint hitGlobal = det -> surface() . toGlobal(localPos);
+			GlobalPoint vtxGlobal(vertex . position() . x(),
+			                      vertex . position() . y(),
+			                      vertex . position() . z());
 			float dist = (hitGlobal - vtxGlobal) . mag(); // cm
 			float tof  = dist / c_cm_ns + static_cast<float>(vertex . position() . t()); // ns
 
@@ -203,7 +202,7 @@ void MTDSimHitProducer::fillDescriptions(edm::ConfigurationDescriptions& descrip
 	edm::ParameterSetDescription desc;
 	desc . add<edm::InputTag>("simTrackLabel" , edm::InputTag("g4SimHits"));
 	desc . add<edm::InputTag>("simVertexLabel", edm::InputTag("g4SimHits"));
-	desc . add<std::string>  ("propagatorName","PropagatorWithMaterial"   );
+	desc . add<std::string>  ("propagatorName", "PropagatorWithMaterial"  );
 
 
 	//----------------------------------------------------------
@@ -282,15 +281,9 @@ PSimHit MTDSimHitProducer::makeSimHit(const TrajectoryStateOnSurface& tsos,
 	uint32_t detId      = det -> geographicalId() . rawId();
 	uint16_t process    = 0;                                // 0 means undefined (FastSim)
 
-	return PSimHit(entry, exit,
-	               pabs, tof,
-	               energyLoss,
-	               pdgId,
-	               detId,
-	               track . trackId(),
+	return PSimHit(entry, exit, pabs, tof, energyLoss, pdgId, detId, track . trackId(),
 	               // localMom's theta and phi (Direction of motion)
-	               localMom . theta(),
-	               localMom . phi(),
+	               localMom . theta(), localMom . phi(),
 	               process);
 }
 
