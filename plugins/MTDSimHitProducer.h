@@ -136,7 +136,7 @@ class MTDSimHitProducer : public edm::global::EDProducer<>
 	//----------------------------------------------------------
 	PSimHit makeSimHit(const TrajectoryStateOnSurface& tsos,
 	                   const GeomDet*                  det,
-                   const SimTrack&                 track,
+	                   const SimTrack&                 track,
 	                   float                           tof) const;
 };
 

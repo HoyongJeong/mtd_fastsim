@@ -22,4 +22,11 @@ def customiseMTD(process):
     if hasattr(process, 'simulation_step'):
         process.simulation_step += process.mtdSimHitProducer
 
+    # Update output commands
+    output_modules = [process.outputModules_()[out] for out in process.outputModules_()]
+    for out_mod in output_modules:
+        if hasattr(out_mod, 'outputCommands'):
+            # Plz save my custom products...
+            out_mod.outputCommands.append('keep *_mtdSimHitProducer_*_*')
+
     return process

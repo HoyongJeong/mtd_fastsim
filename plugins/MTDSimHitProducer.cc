@@ -54,8 +54,8 @@ MTDSimHitProducer::MTDSimHitProducer(const edm::ParameterSet& iConfig)
 	//----------------------------------------------------------
 	// Define labels of data product that this module produces
 	//----------------------------------------------------------
-	produces<std::vector<PSimHit>>("FastTimerHitsBarrel");
-	produces<std::vector<PSimHit>>("FastTimerHitsEndcap");
+	produces<std::vector<PSimHit>>("FastTimerHitsBarrelByFastsim");
+	produces<std::vector<PSimHit>>("FastTimerHitsEndcapByFastsim");
 }
 
 
@@ -190,8 +190,8 @@ void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::Ev
 	//----------------------------------------------------------
 	// Put created data into an event
 	//----------------------------------------------------------
-	iEvent . put(std::move(btlHits), "FastTimerHitsBarrel");
-	iEvent . put(std::move(etlHits), "FastTimerHitsEndcap");
+	iEvent . put(std::move(btlHits), "FastTimerHitsBarrelByFastsim");
+	iEvent . put(std::move(etlHits), "FastTimerHitsEndcapByFastsim");
 }
 
 
