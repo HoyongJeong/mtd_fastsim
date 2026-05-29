@@ -1,11 +1,8 @@
 <use name="FWCore/Framework"/>
+<use name="FWCore/PluginManager"/>
 <use name="FWCore/ParameterSet"/>
-<use name="FWCore/MessageLogger"/>
-<use name="DataFormats/Common"/>
-<use name="DataFormats/DetId"/>
 <use name="SimDataFormats/TrackingHit"/>
-<use name="Geometry/Records"/>
-<use name="Geometry/MTDGeometryBuilder"/>
+<use name="FastSimulation/SimplifiedGeometryPropagator"/>
 <export>
   <lib name="1"/>
 </export>

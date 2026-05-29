@@ -14,35 +14,23 @@
 /// Headers
 ///-----------------------------------------------------------------------------
 #include "MTDSimHitProducer.h"
-
 #include "FWCore/Framework/interface/MakerMacros.h"
-#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
-#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
-#include "FWCore/MessageLogger/interface/MessageLogger.h"
-
-#include "TrackingTools/TrajectoryParametrization/interface/GlobalTrajectoryParameters.h"
-#include "DataFormats/GeometryVector/interface/GlobalPoint.h"
-#include "DataFormats/GeometryVector/interface/GlobalVector.h"
-
-// MTD SubDetector ID
-#include "DataFormats/ForwardDetId/interface/MTDDetId.h"
-#include "DataFormats/ForwardDetId/interface/BTLDetId.h"
-#include "DataFormats/ForwardDetId/interface/ETLDetId.h"
-
-#include <iostream>
+#include "FastSimulation/SimplifiedGeometryPropagator/interface/Constants.h"
+#include <cmath>
 
 
 
 ///-----------------------------------------------------------------------------
 /// Define constructor
 ///-----------------------------------------------------------------------------
-MTDSimHitProducer::MTDSimHitProducer(const edm::ParameterSet& iConfig)
-	: mtdGeoToken_    (esConsumes<MTDGeometry  , MTDDigiGeometryRecord>()   )
-	, magFieldToken_  (esConsumes<MagneticField, IdealMagneticFieldRecord>())
-	, propagatorToken_(esConsumes<Propagator   , TrackingComponentsRecord>(
-		edm::ESInputTag("", iConfig . getParameter<std::string>("propagatorName"))))
-	, simTrackToken_ (consumes<edm::SimTrackContainer> (iConfig . getParameter<edm::InputTag>("simTrackLabel" )))
-	, simVertexToken_(consumes<edm::SimVertexContainer>(iConfig . getParameter<edm::InputTag>("simVertexLabel")))
+MTDSimHitProducer::MTDSimHitProducer(const edm::ParameterSet& cfg)
+	: btlRadius_     (cfg . getParameter<double>("btlRadius"    ))
+	, btlHalfLength_ (cfg . getParameter<double>("btlHalfLength"))
+	, etlZ_          (cfg . getParameter<double>("etlZ"         ))
+	, etlRMin_       (cfg . getParameter<double>("etlRMin"      ))
+	, etlRMax_       (cfg . getParameter<double>("etlRMax"      ))
+	, simTrackToken_ (consumes<edm::SimTrackContainer> (cfg . getParameter<edm::InputTag>("simTracks"  )))
+	, simVertexToken_(consumes<edm::SimVertexContainer>(cfg . getParameter<edm::InputTag>("simVertices")))
 {
 	//----------------------------------------------------------
 	// Debugging message
@@ -53,8 +41,8 @@ MTDSimHitProducer::MTDSimHitProducer(const edm::ParameterSet& iConfig)
 	//----------------------------------------------------------
 	// Define labels of data product that this module produces
 	//----------------------------------------------------------
-	produces<std::vector<PSimHit>>("FastTimerHitsBarrelByFastsim");
-	produces<std::vector<PSimHit>>("FastTimerHitsEndcapByFastsim");
+	produces<edm::PSimHitContainer>("FastSimMTDBarrel");
+	produces<edm::PSimHitContainer>("FastSimMTDEndcap");
 }
 
 
@@ -62,30 +50,12 @@ MTDSimHitProducer::MTDSimHitProducer(const edm::ParameterSet& iConfig)
 ///-----------------------------------------------------------------------------
 /// Produce method
 ///-----------------------------------------------------------------------------
-void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::EventSetup& iSetup) const
+void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::EventSetup&) const
 {
 	//----------------------------------------------------------
 	// Debugging message
 	//----------------------------------------------------------
 	std::cout << "[MTDSimHitProducer::produce] Executed" << std::endl;
-
-
-	//----------------------------------------------------------
-	// Get things from EventSetup
-	//----------------------------------------------------------
-	const MTDGeometry  * mtdGeom    = &iSetup . getData(mtdGeoToken_    );
-	const MagneticField* magField   = &iSetup . getData(magFieldToken_  );
-	const Propagator   * propagator = &iSetup . getData(propagatorToken_);
-
-
-	//----------------------------------------------------------
-	// Read SimTrack/SimVertex
-	//----------------------------------------------------------
-	const auto& simTracks   = iEvent . get(simTrackToken_ );
-	const auto& simVertices = iEvent . get(simVertexToken_);
-//	std::cout << "[MTDSimHitProducer::produce]"
-//		<< "  SimTracks  : " << simTracks   . size()
-//		<< ", SimVertices: " << simVertices . size() << std::endl;
 
 
 	//----------------------------------------------------------
@@ -96,9 +66,16 @@ void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::Ev
 
 
 	//----------------------------------------------------------
+	// Read SimTrack/SimVertex
+	//----------------------------------------------------------
+	const auto& simTracks   = iEvent . get(simTrackToken_ );
+	const auto& simVertices = iEvent . get(simVertexToken_);
+
+
+	//----------------------------------------------------------
 	// Looping over tracks
 	//----------------------------------------------------------
-	for ( const SimTrack& track : simTracks )
+	for ( const auto& track : simTracks )
 	{
 		//--------------------------------------
 		// Neutral tracks -> I don't care. Pass!
@@ -106,190 +83,137 @@ void MTDSimHitProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::Ev
 		if ( track . charge() == 0 ) continue;
 
 		//--------------------------------------
-		// Find SimVertex
-		// No info about the origin if track . vertIndex() were -1
+		// Get start position and momentum from the vertex
 		//--------------------------------------
-		if ( track . noVertex() ) continue;
-		const SimVertex& vertex = simVertices . at(track . vertIndex());
+		unsigned int vtxIdx = track . vertIndex();
+        if ( vtxIdx >= simVertices . size() ) continue;
+
+		const auto& vtx = simVertices[vtxIdx];
+		const math::XYZTLorentzVectorD pos4 = vtx . position();
+
+		double x  = pos4 . X();
+		double y  = pos4 . Y();
+		double z  = pos4 . Z();
+		double px = track . momentum() . X();
+		double py = track . momentum() . Y();
+		double pz = track . momentum() . Z();
+		double p  = track . momentum() . P();
+        if ( p == 0. ) continue;
 
 		//--------------------------------------
-		// Check position and momentum
+		// BTL: intersection with infinite cylinder r=btlRadius_
+		// solve: (x + px*t)^2 + (y + py*t)^2 = R^2
 		//--------------------------------------
-//		const math::XYZTLorentzVectorD& momentum = track  . momentum(); // (px, py, pz, E)
-//		const math::XYZTLorentzVectorD& vtxPos   = vertex . position(); // ( x,  y,  z, t)
-//		std::cout << "[MTDSimHitProducer::produce]"
-//			<< "  Track PDG=" << track    . type()
-//			<< "  pT="        << momentum . Pt()
-//			<< "  eta="       << momentum . Eta()
-//			<< "  vtx=("      << vtxPos   . x() << ","
-//			                  << vtxPos   . y() << ","
-//			                  << vtxPos   . z() << ")" << std::endl;
-
-		//--------------------------------------
-		// Create FreeTrajectoryState
-		//--------------------------------------
-		FreeTrajectoryState fts = makeFTS(track, vertex, magField);
-
-		//--------------------------------------
-		// Time of Flight accounted from creation time (ns)
-        // speed of light = 29.9792458 cm/ns
-		//--------------------------------------
-		const float c_cm_ns = 29.9792458;
-
-		//--------------------------------------
-		// Looping over MTD modules -> propagate toward each module surface
-		//--------------------------------------
-		for ( const GeomDet* det : mtdGeom -> dets())
 		{
-			const BoundPlane& surface = det -> surface();
+			double a    = px*px + py*py;
+			double b    = 2. * (x*px + y*py);
+			double c    = x*x + y*y - btlRadius_*btlRadius_;
+			double disc = b*b - 4.*a*c;
 
-			// Propagate the track to current module
-			TrajectoryStateOnSurface tsos = propagator -> propagate(fts, surface);
-
-			// Continue if failed to propagate
-			if ( ! tsos . isValid() ) continue;
-
-			// Is propagated location in the boundary?
-			const LocalPoint& localPos = tsos . localPosition();
-			if ( ! surface . bounds() . inside(localPos) ) continue;
-
-			// Calculate ToF: from creation to hit / c + creation time
-			GlobalPoint hitGlobal = det -> surface() . toGlobal(localPos);
-			GlobalPoint vtxGlobal(vertex . position() . x(),
-			                      vertex . position() . y(),
-			                      vertex . position() . z());
-			float dist = (hitGlobal - vtxGlobal) . mag(); // cm
-			float tof  = dist / c_cm_ns + static_cast<float>(vertex . position() . t()); // ns
-
-			// Define a PSimHit
-			PSimHit hit = makeSimHit(tsos, det, track, tof);
-
-			// BTL vs ETL: which one?
-			DetId detId(det -> geographicalId());
-			if      ( detId . subdetId() == MTDDetId::BTL )
+			if ( a > 0. && disc >= 0. )
 			{
-				btlHits -> push_back(hit);
+				double sqrtDisc = std::sqrt(disc);
+				//------------------
+				// Take the forward solution (smallest positive t)
+				//------------------
+				for ( double sign : {-1., 1.} )
+				{
+					double t = (-b + sign*sqrtDisc) / (2.*a);
+					if ( t <= 0. ) continue;
+
+					double hx = x + px*t;
+					double hy = y + py*t;
+					double hz = z + pz*t;
+
+					// check z acceptance
+					if ( std::abs(hz) > btlHalfLength_ ) continue;
+
+					float tof = static_cast<float>(std::sqrt(hx*hx + hy*hy + hz*hz) / fastsim::Constants::speedOfLight); // ns
+
+					// local frame: just use global coords as proxy (no real geometry)
+					Local3DPoint entry(static_cast<float>(hx), static_cast<float>(hy), static_cast<float>(hz));
+					Local3DPoint exit = entry; // point-like for now
+
+					btlHits->emplace_back(entry,
+					                      exit,
+					                      static_cast<float>(p), // pabs
+					                      tof,
+					                      0.f,                   // eloss (placeholder)
+					                      track . type(),        // pdgId
+					                      0,                     // detUnitId (placeholder)
+					                      track . trackId(),
+					                      0.f,                   // theta
+					                      0.f);                  // phi
+
+					break; // first valid intersection is enough
+				}
 			}
-			else if ( detId . subdetId() == MTDDetId::ETL )
+		}
+
+		//--------------------------------------
+		// ETL: intersection with disks at z = ±etlZ_
+		// solve: z + pz*t = ±etlZ_  =>  t = (±etlZ_ - z) / pz
+		//--------------------------------------
+		if ( pz != 0. )
+		{
+			for (double diskZ : {etlZ_, -etlZ_})
 			{
-				etlHits -> push_back(hit);
+				double t = (diskZ - z) / pz;
+				if ( t <= 0. ) continue;
+
+				
+				double hx = x + px*t;
+				double hy = y + py*t;
+				double hr = std::sqrt(hx*hx + hy*hy);
+
+				if ( hr < etlRMin_ || hr > etlRMax_ ) continue;
+
+				float tof = static_cast<float>(std::sqrt(hx*hx + hy*hy + diskZ*diskZ) / fastsim::Constants::speedOfLight);
+
+				Local3DPoint entry(static_cast<float>(hx), static_cast<float>(hy), static_cast<float>(diskZ));
+				Local3DPoint exit = entry;
+
+				etlHits -> emplace_back(ientry,
+				                        exit,
+				                        static_cast<float>(p),
+				                        tof,
+				                        0.f,
+				                        track.type(),
+				                        0,
+				                        track.trackId(),
+				                        0.f,
+				                        0.f);
 			}
 		}
 	}
 
 
 	//----------------------------------------------------------
-	// Sim hit summary
-	//----------------------------------------------------------
-	std::cout << "[MTDSimHitProducer::produce]"
-		<< "  BTL hits: " << btlHits -> size()
-		<< "  ETL hits: " << etlHits -> size() << std::endl;
-
-
-	//----------------------------------------------------------
 	// Put created data into an event
 	//----------------------------------------------------------
-	iEvent . put(std::move(btlHits), "FastTimerHitsBarrelByFastsim");
-	iEvent . put(std::move(etlHits), "FastTimerHitsEndcapByFastsim");
+	iEvent . put(std::move(btlHits), "FastSimMTDBarrel");
+	iEvent . put(std::move(etlHits), "FastSimMTDEndcap");
 }
 
 
 ///-----------------------------------------------------------------------------
 /// Fill descriptions
 ///-----------------------------------------------------------------------------
-void MTDSimHitProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions)
+void MTDSimHitProducer::fillDescriptions(edm::ConfigurationDescriptions& descs)
 {
 	edm::ParameterSetDescription desc;
-	desc . add<edm::InputTag>("simTrackLabel" , edm::InputTag("g4SimHits"));
-	desc . add<edm::InputTag>("simVertexLabel", edm::InputTag("g4SimHits"));
-	desc . add<std::string>  ("propagatorName", "PropagatorWithMaterial"  );
 
+	desc . add<double>("btlRadius"    , 116.);  // cm
+	desc . add<double>("btlHalfLength", 260.);  // cm
+	desc . add<double>("etlZ"         , 290.);  // cm
+	desc . add<double>("etlRMin"      ,  31.);  // cm
+	desc . add<double>("etlRMax"      , 120.);  // cm
+	desc . add<edm::InputTag>("simTracks"  , edm::InputTag("fastSimProducer"));
+	desc . add<edm::InputTag>("simVertices", edm::InputTag("fastSimProducer"));
 
-	//----------------------------------------------------------
-	// If there are parameters to be received from the Python configuration file, define them here.
-	//----------------------------------------------------------
-	descriptions . add("mtdSimHitProducer", desc);
+	descs . addDefault(desc);
 }
 
 
 
-///-----------------------------------------------------------------------------
-/// Free trajectory state generator (FTS)
-/// It makes FTS using momentum and position
-///-----------------------------------------------------------------------------
-FreeTrajectoryState MTDSimHitProducer::makeFTS(const SimTrack&      track,
-                                               const SimVertex&     vertex,
-                                               const MagneticField* field) const
-{
-	//----------------------------------------------------------
-	// Location of SimVertex -> GlobalPoint (Unit maybe cm?)
-	//----------------------------------------------------------
-	GlobalPoint position(
-		vertex . position() . x(),
-		vertex . position() . y(),
-		vertex . position() . z()
-	);
-
-
-	//----------------------------------------------------------
-	// Momentum of SimTrack -> GlobalVector (Unit maybe GeV?)
-	//----------------------------------------------------------
-	GlobalVector momentum(
-		track . momentum() . x(),
-		track . momentum() . y(),
-		track . momentum() . z()
-	);
-
-
-	//----------------------------------------------------------
-	// Charge (charge() returns float type. Let's convert it into integer)
-	//----------------------------------------------------------
-	int charge = static_cast<int>(track . charge());
-
-
-	GlobalTrajectoryParameters gtp(position, momentum, charge, field);
-	return FreeTrajectoryState(gtp);
-}
-
-
-
-///-----------------------------------------------------------------------------
-/// PSimHit generator
-/// Define a PSimHit based on TrajectoryStateOnSurface (TSOS) and track info, then return it.
-///-----------------------------------------------------------------------------
-PSimHit MTDSimHitProducer::makeSimHit(const TrajectoryStateOnSurface& tsos,
-                                      const GeomDet*                  det,
-                                      const SimTrack&                 track,
-                                      float                           tof) const
-{
-	//----------------------------------------------------------
-	// Global to local already done by TSOS
-	//----------------------------------------------------------
-	const LocalPoint&  localPos = tsos . localPosition();
-	const LocalVector& localMom = tsos . localMomentum();
-
-
-	//----------------------------------------------------------
-	// MTD is thin so let us approximate entryPoint to exitPoint
-	//----------------------------------------------------------
-	LocalPoint entry(localPos . x(), localPos . y(), -0.15f); // +/- 1.5 mm?
-	LocalPoint exit (localPos . x(), localPos . y(),  0.15f);
-
-	float    pabs       = tsos . globalMomentum() . mag();  // Magnitude of momentum
-	float    energyLoss = 0.0015f;                          // ~ 1.5 MeV (Let me adjust later...)
-	int      pdgId      = track . type();
-	uint32_t detId      = det -> geographicalId() . rawId();
-	uint16_t process    = 0;                                // 0 means undefined (FastSim)
-
-	return PSimHit(entry, exit, pabs, tof, energyLoss, pdgId, detId, track . trackId(),
-	               // localMom's theta and phi (Direction of motion)
-	               localMom . theta(), localMom . phi(),
-	               process);
-}
-
-
-
-///-----------------------------------------------------------------------------
-/// Register this class as a module in the CMSSW framework.
-///-----------------------------------------------------------------------------
 DEFINE_FWK_MODULE(MTDSimHitProducer);
