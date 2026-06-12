@@ -88,10 +88,16 @@ namespace fastsim
 	                                 const RandomEngineAndDistribution& random)
 	{
 		//----------------------------------------------------------
-		// Ignore the neutral
+		// Debugging message
 		//----------------------------------------------------------
-		if ( particle . charge() == 0 ) return;
- 
+//		std::cout << "[MTDSimHitProducer::interact] Called"
+//		          << " isForward="    << layer    . isForward()
+//		          << " geomProperty=" << layer    . getGeomProperty()
+//		          << " charge="       << particle . charge()
+//		          << " p="            << particle . momentum() . P()
+//		          << " eta="          << particle . momentum() . Eta()
+//		          << std::endl;
+
 
 		//----------------------------------------------------------
 		// Read position and momentum
@@ -106,9 +112,29 @@ namespace fastsim
 
 
 		//----------------------------------------------------------
-		// Ignore the rest
+		// Exceptions
 		//----------------------------------------------------------
+		//--------------------------------------
+		// Ignore the neutral
+		//--------------------------------------
+		if ( particle . charge() == 0 ) return;
+
+		//--------------------------------------
+		// No material
+		//--------------------------------------
+		if ( layer . getThickness(particle . position(), particle . momentum()) < 1E-10 ) return;
+
+		//--------------------------------------
+		// Ignore the rest
+		//--------------------------------------
 		if ( p == 0. ) return;
+
+
+		//----------------------------------------------------------
+		// The energy deposit in the layer
+		//----------------------------------------------------------
+		const double energyDeposit = particle . getEnergyDeposit();
+		particle . setEnergyDeposit(0); // I've just copied this from TrackerSimHitProducer
 
 
 		//----------------------------------------------------------
@@ -130,16 +156,16 @@ namespace fastsim
 
 			const Local3DPoint hitPoint(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 
-			btlHits_ -> emplace_back(hitPoint,               // Entry
-			                         hitPoint,               // Exit (point-like)
-			                         static_cast<float>(p),  // Pabs
-			                         tof,                    // Time of flight
-			                         0.f,                    // Eloss
-			                         particle . pdgId(),     // Particle ID
-			                         0U,                     // DetUnitId (placeholder)
-			                         simTrackId,             // Track ID
-			                         0.f,                    // Theta
-			                         0.f);                   // Phi
+			btlHits_ -> emplace_back(hitPoint,                          // Entry
+			                         hitPoint,                          // Exit (point-like)
+			                         static_cast<float>(p),             // Pabs
+			                         tof,                               // Time of flight
+			                         static_cast<float>(energyDeposit), // Eloss
+			                         particle . pdgId(),                // Particle ID
+			                         0U,                                // DetUnitId (placeholder)
+			                         simTrackId,                        // Track ID
+			                         0.f,                               // Theta
+			                         0.f);                              // Phi
 		}
 		else
 		{
@@ -148,6 +174,7 @@ namespace fastsim
 			// ETL: forward layer
 			//--------------------------------------
 			const double r = std::sqrt(x*x + y*y);
+
 			if ( r < etlRMin_ || r > etlRMax_ ) return;
 
 			const float tof = static_cast<float>(particle . position() . R() / fastsim::Constants::speedOfLight);
@@ -158,7 +185,7 @@ namespace fastsim
 			                         hitPoint,
 			                         static_cast<float>(p),
 			                         tof,
-			                         0.f,
+			                         static_cast<float>(energyDeposit),
 			                         particle . pdgId(),
 			                         0U,
 			                         simTrackId,
