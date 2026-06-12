@@ -21,63 +21,80 @@
 ///-----------------------------------------------------------------------------
 /// Headers
 ///-----------------------------------------------------------------------------
-//----------------------------------------------------------
-// Core
-//----------------------------------------------------------
-#include "FWCore/Framework/interface/global/EDProducer.h"
-#include "FWCore/Framework/interface/Event.h"
-#include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
-#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
-#include "FWCore/Utilities/interface/InputTag.h"
+#include <memory>
 
-
-//----------------------------------------------------------
-// data formats
-//----------------------------------------------------------
-#include "SimDataFormats/Track/interface/SimTrackContainer.h"
-#include "SimDataFormats/Vertex/interface/SimVertexContainer.h"
+#include "FastSimulation/SimplifiedGeometryPropagator/interface/InteractionModel.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
 
 
 
-///-----------------------------------------------------------------------------
-/// Class declaration
-///-----------------------------------------------------------------------------
-class MTDSimHitProducer : public edm::global::EDProducer<>
+namespace edm
 {
-	public:
-	//----------------------------------------------------------
-	// Constructor and destructor
-	//----------------------------------------------------------
-	explicit MTDSimHitProducer(const edm::ParameterSet& cfg);
-	~MTDSimHitProducer() override = default;
+	class ParameterSet;
+	class ProducesCollector;
+	class Event;
+}
 
 
-	//----------------------------------------------------------
-	// Public method
-	//----------------------------------------------------------
-	static void fillDescriptions(edm::ConfigurationDescriptions&);
-	void produce(edm::StreamID, edm::Event&, const edm::EventSetup&) const override;
+
+namespace fastsim
+{
+	///-----------------------------------------------------------------------------
+	/// Class declaration: produces SimHits in the MTD layers
+	///-----------------------------------------------------------------------------
+	class MTDSimHitProducer : public InteractionModel
+	{
+		public:
+		//----------------------------------------------------------
+		// Constructor and destructor
+		//----------------------------------------------------------
+		MTDSimHitProducer(const std::string& name, const edm::ParameterSet& cfg);
+		~MTDSimHitProducer() override = default;
 
 
-	private:
-	//----------------------------------------------------------
-	// Geometry parameters
-	//----------------------------------------------------------
-	const double btlRadius_;
-	const double btlHalfLength_;
-	const double etlZ_;
-	const double etlRMin_;
-	const double etlRMax_;
+		//----------------------------------------------------------
+		// Public method
+		//----------------------------------------------------------
+		//--------------------------------------
+		// Perform the interaction.
+		// \param particle    The particle that interacts with the matter.
+		// \param layer       The detector layer that interacts with the particle.
+		// \param secondaries Particles that are produced in the interaction (if any).
+		// \param random      The Random Engine.
+		//--------------------------------------
+		void interact(Particle& particle,
+		              const SimplifiedGeometry& layer,
+		              std::vector<std::unique_ptr<Particle>>& secondaries,
+		              const RandomEngineAndDistribution& random) override;
+
+		//--------------------------------------
+		// Register the SimHit collection
+		//--------------------------------------
+		void registerProducts(edm::ProducesCollector producesCollector) const override;
+
+		//--------------------------------------
+		// Store the SimHit collection
+		//--------------------------------------
+		void storeProducts(edm::Event& iEvent) override;
 
 
-	//----------------------------------------------------------
-	// Input tokens
-	//----------------------------------------------------------
-	const edm::EDGetTokenT<edm::SimTrackContainer>  simTrackToken_;
-	const edm::EDGetTokenT<edm::SimVertexContainer> simVertexToken_;
-};
+		private:
+		//----------------------------------------------------------
+		// Geometry parameters
+		//----------------------------------------------------------
+		const double btlRadius_;
+		const double btlHalfLength_;
+		const double etlRMin_;
+		const double etlRMax_;
+
+
+		//----------------------------------------------------------
+		// hit containers
+		//----------------------------------------------------------
+		std::unique_ptr<edm::PSimHitContainer> btlHits_;
+		std::unique_ptr<edm::PSimHitContainer> etlHits_;
+	};
+} // namespace fastsim
 
 
 

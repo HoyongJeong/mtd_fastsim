@@ -1,2 +1,3 @@
 <use name="FastSimulation/MTD"/>
+<use name="FastSimulation/SimplifiedGeometryPropagator"/>
 <flags EDM_PLUGIN="1"/>
