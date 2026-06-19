@@ -2,7 +2,7 @@
 ///
 ///   MTDSimHitProducer.cc
 ///
-///   MTD fastsim try...
+///   MTD fastsim try since 2026. Please work...
 ///
 /// - Hoyong Jeong (hoyong5419@korea.ac.kr, Korea University)
 ///
@@ -145,16 +145,27 @@ namespace fastsim
 		                     : particle . simTrackIndex();
 
 
+		//----------------------------------------------------------
+		// Get time when the particle hits the layer 
+		//----------------------------------------------------------
+		// Approximate way: t = r/v
+//		const float tof = static_cast<float>(particle . position() . R() / fastsim::Constants::speedOfLight);
+		// Read from pos = (x, y, z, t)
+		const float tof = static_cast<float>(particle . position() . T());
+
+
+		//----------------------------------------------------------
+		// Hit point 
+		//----------------------------------------------------------
+		const Local3DPoint hitPoint(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+
+
+		//----------------------------------------------------------
+		// BTL: barrel layer
+		//----------------------------------------------------------
 		if ( ! layer . isForward() )
 		{
-			//--------------------------------------
-			// BTL: barrel layer
-			//--------------------------------------
 			if ( std::abs(z) > btlHalfLength_ ) return;
-
-			const float tof = static_cast<float>(particle . position() . R() / fastsim::Constants::speedOfLight);
-
-			const Local3DPoint hitPoint(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 
 			btlHits_ -> emplace_back(hitPoint,                          // Entry
 			                         hitPoint,                          // Exit (point-like)
@@ -167,19 +178,13 @@ namespace fastsim
 			                         0.f,                               // Theta
 			                         0.f);                              // Phi
 		}
+		//----------------------------------------------------------
+		// ETL: forward layer
+		//----------------------------------------------------------
 		else
 		{
-			
-			//--------------------------------------
-			// ETL: forward layer
-			//--------------------------------------
 			const double r = std::sqrt(x*x + y*y);
-
 			if ( r < etlRMin_ || r > etlRMax_ ) return;
-
-			const float tof = static_cast<float>(particle . position() . R() / fastsim::Constants::speedOfLight);
-
-			const Local3DPoint hitPoint(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 
 			etlHits_ -> emplace_back(hitPoint,
 			                         hitPoint,
@@ -198,5 +203,5 @@ namespace fastsim
 
 
 DEFINE_EDM_PLUGIN(fastsim::InteractionModelFactory,
-                  fastsim::MTDSimHitProducer,
-                  "fastsim::MTDSimHitProducer");
+                  fastsim::MTDSimHitProducer      ,
+                  "fastsim::MTDSimHitProducer"    );
